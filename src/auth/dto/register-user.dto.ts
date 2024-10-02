@@ -19,7 +19,7 @@ export class RegisterUserDto {
 
     @IsString()
     @IsOptional()
-    avatarUrl?: string;
+    avatarUrl?: string= '';
 
     
 

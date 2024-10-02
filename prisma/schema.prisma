@@ -13,8 +13,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-model User{
+model User {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   avatarUrl String?
@@ -25,18 +24,26 @@ model User{
 
   password String
 
-  role Role @default(USER)
+  //role Role @default(USER)
+  roles Role[] @default([USER_ROLE])
 
   isActive Boolean @default(true)
 
   createAt DateTime @default(now())
 
   updateAt DateTime @updatedAt
-
 }
 
 enum Role{
-  USER
-  ADMIN
+  USER_ROLE
+  ADMIN_ROLE
 }
 
+//model Role {
+//  id       String   @id @default(auto()) @map("_id") @db.ObjectId
+//  role     String
+//  createAt DateTime @default(now())
+//  updateAt DateTime @updatedAt
+//  User     User?    @relation(fields: [userId], references: [id])
+//  userId   String?  @db.ObjectId
+//}

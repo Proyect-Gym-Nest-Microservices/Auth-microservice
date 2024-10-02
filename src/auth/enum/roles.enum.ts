@@ -1,7 +1,7 @@
-import { Role } from "@prisma/client";
+//import { Role } from "@prisma/client";
 
 
-export const RolesList = [
-    Role.ADMIN,
-    Role.USER
-]
+//export const RolesList = [
+//    Role.ADMIN,
+//    Role.USER
+//]

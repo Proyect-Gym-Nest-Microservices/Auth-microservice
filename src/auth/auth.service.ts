@@ -32,9 +32,10 @@ export class AuthService extends PrismaClient implements OnModuleInit{
             const {sub,iat, exp, ...user} = this.jwtService.verify(token, {
                 secret:envs.JWT_SECRET
             })
+            const { avatarUrl, isActive, createAt, updateAt, ...rest } = user 
             return {
-                user,
-                token: await this.signJwt(user)
+                user:rest,
+                token: await this.signJwt(rest)
             }
         } catch (error) {
             throw new RpcException({
@@ -64,7 +65,7 @@ export class AuthService extends PrismaClient implements OnModuleInit{
                 }
             })
 
-            const {password:_, ...rest } = newUser;
+            const {password:hashPassword, isActive, createAt, updateAt, avatarUrl, ...rest } = newUser;
 
             return {
                 user: rest,
@@ -101,7 +102,7 @@ export class AuthService extends PrismaClient implements OnModuleInit{
                 })
             }
 
-            const {password:_, ...rest } = user;
+            const {password:hashPassword, isActive, createAt, updateAt, avatarUrl, ...rest} = user;
 
             return {
                 user: rest,
