@@ -1,5 +1,4 @@
 import { Role } from '@prisma/client';
-//import { RolesList } from '../enum/roles.enum';
 
 
 export interface JwtPayload{
