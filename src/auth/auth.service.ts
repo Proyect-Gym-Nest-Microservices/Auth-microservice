@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt'
 import { LoginUserDto } from "./dto/login-user.dto";
 import { firstValueFrom, timeout, TimeoutError } from "rxjs";
 import { ChangePasswordDto } from "./dto/change-password.dto";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 
 @Injectable()
 export class AuthService extends PrismaClient implements OnModuleInit {
@@ -35,8 +36,14 @@ export class AuthService extends PrismaClient implements OnModuleInit {
     
     private generateAccessToken(payload: JwtPayload): string {
         return this.jwtService.sign(payload, {
-            expiresIn: '15m',
+            expiresIn: '20m',
             secret: envs.JWT_SECRET_ACCESS
+        });
+    }
+    private generateResetToken(userId: string): string {
+        return this.jwtService.sign({id:userId}, {
+            expiresIn: '15m',
+            secret: envs.JWT_SECRET_RESET_PASSWORD
         });
     }
     
@@ -79,7 +86,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                 status: HttpStatus.GATEWAY_TIMEOUT,
                 message: 'Operation timed out',
             });
-        }
+        } 
         throw new RpcException({
             status: HttpStatus.INTERNAL_SERVER_ERROR,
             message: error.message || defaultMessage,
@@ -147,16 +154,8 @@ export class AuthService extends PrismaClient implements OnModuleInit {
 
         } catch (error) {
             this.handleError(error,'An error occurred during token refresh')
-            //if (error instanceof RpcException) {
-            //    throw error
-            //}
-            //throw new RpcException({
-            //    status: HttpStatus.INTERNAL_SERVER_ERROR,
-            //    message: error.message || 'An error occurred during token refresh',
-            //})
         }
     }
-
 
 
     async registerUser(registerUserDto: RegisterUserDto) {
@@ -178,16 +177,6 @@ export class AuthService extends PrismaClient implements OnModuleInit {
 
         } catch (error) {
             this.handleError(error, 'Error while creating user');
-            //if (error instanceof TimeoutError) {
-            //    throw new RpcException({
-            //        status: 504,
-            //        message: 'Timeout while creating user',
-            //    });
-            //}
-            //throw new RpcException({
-            //    status: error.status,
-            //    message: error.message
-            //})
         }
 
     }
@@ -252,6 +241,87 @@ export class AuthService extends PrismaClient implements OnModuleInit {
         } catch (error) {
             this.handleError(error, 'Error changing password');
         }
+    }
+
+    async forgotPassword(forgotPassworddto: ForgotPasswordDto) {
+        const { email } = forgotPassworddto;
+        try {
+            const user = await firstValueFrom(
+                this.client.send('find.user.by.email', email).pipe(timeout(5000))
+            );
+            if (!user) {
+                throw new RpcException({
+                    status: HttpStatus.NOT_FOUND,
+                    message: 'User not found'
+                });
+            }
+    
+            const resetToken = this.generateResetToken(user.id);
+        
+            await this.resetToken.create({
+                data: {
+                    token: resetToken,
+                    userId: user.id,
+                    expiresAt: new Date(Date.now() + 20 * 60 * 1000), // 20 min
+                },
+            });
+
+            const emailService = await firstValueFrom(
+                this.client.send('email.password.reset', {
+                    email: user.email,
+                    resetToken: resetToken
+                }).pipe(timeout(5000))
+            );
+    
+            return emailService;
+        } catch (error) {
+            this.handleError(error, 'Error processing forgot password request');
+        }
+    }
+
+    async resetPassword(token: string, newPassword: string) {
+        try {
+            await this.jwtService.verifyAsync(token);
+
+            const resetToken = await this.resetToken.findUnique({
+                where: { token }
+            });
+
+            if (!resetToken || resetToken.isUsed || resetToken.expiresAt < new Date()) {
+                throw new RpcException({
+                    status: HttpStatus.BAD_REQUEST,
+                    message: 'Invalid or expired reset token'
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+
+            await this.$transaction(async (prismaTransaction) => {
+                // Actualizar el usuario a través del microservicio
+                await firstValueFrom(
+                    this.client.send('update.user', {
+                        id: resetToken.userId,
+                        password: hashedPassword
+                    }).pipe(timeout(5000))
+                );
+
+                // Actualizar el token de restablecimiento
+                await prismaTransaction.resetToken.update({
+                    where: { id: resetToken.id },
+                    data: { isUsed: true }
+                });
+            });
+            // Revocar todos los tokens del usuario
+            await this.revokeAllUserTokens(resetToken.userId);
+
+            return {
+                message: 'Password reset successfully'
+            };
+        } catch (error) {
+            this.handleError(error, 'Error resetting password');
+        }
+        
     }
 
 }
