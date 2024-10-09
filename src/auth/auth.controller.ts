@@ -5,6 +5,7 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 
 @Controller()
@@ -40,5 +41,9 @@ export class AuthController {
   @MessagePattern('auth.forgot.password')
   forgotPassword(@Payload() forgotPassworddto:ForgotPasswordDto ) {
     return this.authService.forgotPassword(forgotPassworddto)
+  }
+  @MessagePattern('auth.reset.password')
+  resetPassword(@Payload() resetPassworddto:ResetPasswordDto ) {
+    return this.authService.resetPassword(resetPassworddto)
   }
 }

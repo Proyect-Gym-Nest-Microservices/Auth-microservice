@@ -10,6 +10,7 @@ import { LoginUserDto } from "./dto/login-user.dto";
 import { firstValueFrom, timeout, TimeoutError } from "rxjs";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class AuthService extends PrismaClient implements OnModuleInit {
@@ -170,7 +171,6 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                     password: hashedPassword
                 }).pipe(timeout(5000))
             )
-            this.logger.error(newUser)
             const { roles, id } = newUser;
             const tokens = await this.generateTokens({ id, roles })
             return {user: { id, roles },...tokens}
@@ -279,9 +279,14 @@ export class AuthService extends PrismaClient implements OnModuleInit {
         }
     }
 
-    async resetPassword(token: string, newPassword: string) {
+    async resetPassword(resetPasswordDto:ResetPasswordDto) {
+        const { token, password: newPassword } = resetPasswordDto;
+        this.logger.error(resetPasswordDto)
+
         try {
-            await this.jwtService.verifyAsync(token);
+            await this.jwtService.verifyAsync(token, {
+                secret: envs.JWT_SECRET_RESET_PASSWORD
+            });
 
             const resetToken = await this.resetToken.findUnique({
                 where: { token }
@@ -319,6 +324,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                 message: 'Password reset successfully'
             };
         } catch (error) {
+            this.logger.error(error)
             this.handleError(error, 'Error resetting password');
         }
         
