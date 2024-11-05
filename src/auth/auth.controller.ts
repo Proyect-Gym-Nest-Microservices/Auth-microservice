@@ -22,10 +22,20 @@ export class AuthController {
   loginUser(@Payload() loginUserDto:LoginUserDto) {
     return this.authService.loginUser(loginUserDto);  
   }
+
+  @MessagePattern('auth.invalidate.refresh.token')
+  logoutUser(@Payload() payload: { userId: string, refreshToken: string }) {
+    console.log({ userId: payload.userId, refreshToken: payload.refreshToken })
+    return this.authService.invalidateRefreshToken(payload.userId,payload.refreshToken);
+  }
   
-  @MessagePattern('auth.verify.token')
-  verifyToken(@Payload() token: string) {
+  @MessagePattern('auth.verify.access.token')
+  verifyAccessToken(@Payload() token: string) {
     return this.authService.verifyAccessToken(token);
+  }
+  @MessagePattern('auth.verify.refresh.token')
+  verifyRefreshToken(@Payload() token: string) {
+    return this.authService.verifyRefreshToken(token);
   }
 
   @MessagePattern('auth.refresh.access.token')

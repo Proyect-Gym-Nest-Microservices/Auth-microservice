@@ -27,58 +27,8 @@ export class AuthService extends PrismaClient implements OnModuleInit {
         this.$connect()
         this.logger.log('MongoDb connected')
     }
-
-    private async generateTokens(payload: JwtPayload) {
-        const accessToken = this.generateAccessToken(payload);
-        const refreshToken = this.generateRefreshToken(payload);
-        await this.saveRefreshToken(refreshToken, payload.id);
-        return { accessToken, refreshToken };
-    }
     
-    private generateAccessToken(payload: JwtPayload): string {
-        return this.jwtService.sign(payload, {
-            expiresIn: '20m',
-            secret: envs.JWT_SECRET_ACCESS
-        });
-    }
-    private generateResetToken(userId: string): string {
-        return this.jwtService.sign({id:userId}, {
-            expiresIn: '15m',
-            secret: envs.JWT_SECRET_RESET_PASSWORD
-        });
-    }
-    
-    private generateRefreshToken(payload: JwtPayload): string {
-        return this.jwtService.sign(payload, {
-            expiresIn: '7d',
-            secret: envs.JWT_SECRET_REFRESH
-        });
-    }
-    
-    private async saveRefreshToken(refreshToken: string, userId: string) {
-        await this.refreshToken.create({
-            data: {
-                token: refreshToken,
-                userId,
-                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-        });
-    }
-    
-    private async revokeRefreshToken(id: string) {
-        await this.refreshToken.update({
-            where: { id },
-            data: { isRevoked: true },
-        });
-    }
-    
-    private async revokeAllUserTokens(userId: string) {
-        await this.refreshToken.updateMany({
-            where: { userId },
-            data: { isRevoked: true },
-        });
-    }
-    private handleError(error: any, defaultMessage: string) {
+    private handleError(error: any, defaultMessage: string, httpStatus: HttpStatus) {
         if (error instanceof RpcException) {
             throw error;
         }
@@ -87,11 +37,92 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                 status: HttpStatus.GATEWAY_TIMEOUT,
                 message: 'Operation timed out',
             });
-        } 
+        }
         throw new RpcException({
-            status: HttpStatus.INTERNAL_SERVER_ERROR,
+            status: HttpStatus.INTERNAL_SERVER_ERROR || httpStatus,
             message: error.message || defaultMessage,
         });
+    }
+    private async generateTokens(payload: JwtPayload) {
+        try {
+            const accessToken = this.generateAccessToken(payload);
+            const refreshToken = this.generateRefreshToken(payload);
+            await this.saveRefreshToken(refreshToken, payload.id);
+            return { accessToken, refreshToken };
+        } catch (error) {
+            this.handleError(error,'Error generating tokens', HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+
+    private generateAccessToken(payload: JwtPayload): string {
+        try {
+            return this.jwtService.sign(payload, {
+                expiresIn: '20m',
+                secret: envs.JWT_SECRET_ACCESS
+            });
+
+        } catch (error) {
+            this.handleError(error,'Error generating access token', HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+    private generateResetToken(userId: string): string {
+        try {
+            return this.jwtService.sign({ id: userId }, {
+                expiresIn: '15m',
+                secret: envs.JWT_SECRET_RESET_PASSWORD
+            });
+
+        } catch (error) {
+            this.handleError(error,'Error generating reset token',HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+    private async saveRefreshToken(refreshToken: string, userId: string) {
+        try {
+            await this.refreshToken.create({
+                data: {
+                    token: refreshToken,
+                    userId,
+                    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                },
+            });
+        } catch (error) {
+            this.handleError(error,'Error saving refresh token',HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+
+    private generateRefreshToken(payload: JwtPayload): string {
+        try {
+            return this.jwtService.sign(payload, {
+                expiresIn: '7d',
+                secret: envs.JWT_SECRET_REFRESH
+            });
+
+        } catch (error) {
+            this.handleError(error,'Error saving refresh token',HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+
+
+    private async revokeRefreshToken(id: string) {
+        try {
+            await this.refreshToken.update({
+                where: { id },
+                data: { isRevoked: true, updatedAt: new Date() }
+            });
+        } catch (error) {
+            this.handleError(error,'Error revoking Refresh token',HttpStatus.INTERNAL_SERVER_ERROR)
+        }
+    }
+
+    private async revokeAllUserTokens(userId: string) {
+        try {
+            await this.refreshToken.updateMany({
+                where: { userId },
+                data: { isRevoked: true, updatedAt: new Date() },
+            });
+        } catch (error) {
+            this.handleError(error,'Error revoke all Refresh tokens',HttpStatus.INTERNAL_SERVER_ERROR)
+        }
     }
 
     async verifyAccessToken(token: string) {
@@ -102,10 +133,39 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             const { id, roles } = user
             return { user: { id, roles } }
         } catch (error) {
-            throw new RpcException({
-                status: HttpStatus.UNAUTHORIZED,
-                message: 'Invalid Token'
+            this.handleError(error,'Invalid Token', HttpStatus.UNAUTHORIZED)
+        }
+    }
+    async verifyRefreshToken(token: string) {
+        try {
+            const { sub, iat, exp, ...user } = this.jwtService.verify(token, {
+                secret: envs.JWT_SECRET_REFRESH
             })
+            const { id, roles } = user
+            return { user: { id, roles } }
+        } catch (error) {
+            this.handleError(error,'Invalid Token', HttpStatus.UNAUTHORIZED)
+        }
+    }
+
+    async invalidateRefreshToken(userId: string, refreshToken: string) {
+        try {
+            const tokenData = await this.refreshToken.findUnique({
+                where: { token: refreshToken, userId }
+            })
+            if (!tokenData) {
+                throw new RpcException({
+                    status: HttpStatus.UNAUTHORIZED,
+                    message: 'Invalid token or user'
+                });
+            }
+            await this.revokeRefreshToken(tokenData.id)
+            return {
+                success: true
+            }
+
+        } catch (error) {
+            this.handleError(error, 'An error occurred during token refresh', HttpStatus.INTERNAL_SERVER_ERROR)
         }
     }
 
@@ -121,7 +181,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                     message: 'Refresh token not found'
                 });
             };
-            
+
             if (new Date() > storedRefreshToken.expiresAt) {
                 await this.revokeRefreshToken(storedRefreshToken.id)
                 throw new RpcException({
@@ -129,7 +189,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                     message: 'Refresh token has expired.  Please log in again.'
                 });
             }
-            
+
             if (storedRefreshToken.isRevoked) {
                 throw new RpcException({
                     status: HttpStatus.UNAUTHORIZED,
@@ -154,7 +214,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             return { accessToken: newAccessToken, refreshToken };
 
         } catch (error) {
-            this.handleError(error,'An error occurred during token refresh')
+            this.handleError(error, 'An error occurred during token refresh',HttpStatus.INTERNAL_SERVER_ERROR)
         }
     }
 
@@ -173,10 +233,10 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             )
             const { roles, id } = newUser;
             const tokens = await this.generateTokens({ id, roles })
-            return {user: { id, roles },...tokens}
+            return { user: { id, roles }, ...tokens }
 
         } catch (error) {
-            this.handleError(error, 'Error while creating user');
+            this.handleError(error, 'Error while creating user',HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
     }
@@ -197,14 +257,14 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             const { id, roles } = user
             const tokens = await this.generateTokens({ id, roles })
 
-            return {user: { id, roles },...tokens}
+            return { user: { id, roles }, ...tokens }
 
         } catch (error) {
-            this.handleError(error,'Invalid Credentials')
+            this.handleError(error, 'Invalid Credentials',HttpStatus.INTERNAL_SERVER_ERROR)
         }
 
     }
-    async changePassword(changePasswordDto:ChangePasswordDto) {
+    async changePassword(changePasswordDto: ChangePasswordDto) {
         const { userId, currentPassword, newPassword, confirmNewPassword } = changePasswordDto;
         try {
 
@@ -230,7 +290,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
             const updatedUser = await firstValueFrom(
-                this.client.send('update.user',{id:userId,password: hashedNewPassword}).pipe(timeout(5000))
+                this.client.send('update.user', { id: userId, password: hashedNewPassword }).pipe(timeout(5000))
             )
 
             await this.revokeAllUserTokens(userId);
@@ -239,7 +299,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                 ...updatedUser
             };
         } catch (error) {
-            this.handleError(error, 'Error changing password');
+            this.handleError(error, 'Error changing password', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -255,9 +315,9 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                     message: 'User not found'
                 });
             }
-    
+
             const resetToken = this.generateResetToken(user.id);
-        
+
             await this.resetToken.create({
                 data: {
                     token: resetToken,
@@ -272,14 +332,14 @@ export class AuthService extends PrismaClient implements OnModuleInit {
                     resetToken: resetToken
                 }).pipe(timeout(5000))
             );
-    
+
             return emailService;
         } catch (error) {
-            this.handleError(error, 'Error processing forgot password request');
+            this.handleError(error, 'Error processing forgot password request', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    async resetPassword(resetPasswordDto:ResetPasswordDto) {
+    async resetPassword(resetPasswordDto: ResetPasswordDto) {
         const { token, password: newPassword } = resetPasswordDto;
         this.logger.error(resetPasswordDto)
 
@@ -325,9 +385,9 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             };
         } catch (error) {
             this.logger.error(error)
-            this.handleError(error, 'Error resetting password');
+            this.handleError(error, 'Error resetting password',HttpStatus.INTERNAL_SERVER_ERROR);
         }
-        
+
     }
 
 }
