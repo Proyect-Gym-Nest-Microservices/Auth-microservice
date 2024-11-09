@@ -11,8 +11,6 @@ import { NatsModule } from 'src/transports/nats.module';
   imports: [
     JwtModule.register({
       global: true, 
-      //secret: envs.JWT_SECRET,
-      //signOptions:{expiresIn:'2h'}
     }),
     NatsModule
   ]

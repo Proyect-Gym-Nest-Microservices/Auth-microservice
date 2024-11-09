@@ -13,9 +13,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @MessagePattern('auth.register.user')
-  registerUser(@Payload() registerUserDto: RegisterUserDto) {
-    console.log({registerUserDto})
-  
+  registerUser(@Payload() registerUserDto: RegisterUserDto) {  
     return this.authService.registerUser(registerUserDto);
   }
   @MessagePattern('auth.login.user')
@@ -25,7 +23,6 @@ export class AuthController {
 
   @MessagePattern('auth.invalidate.refresh.token')
   logoutUser(@Payload() payload: { userId: string, refreshToken: string }) {
-    console.log({ userId: payload.userId, refreshToken: payload.refreshToken })
     return this.authService.invalidateRefreshToken(payload.userId,payload.refreshToken);
   }
   
