@@ -257,6 +257,9 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             const { id, roles } = user
             const tokens = await this.generateTokens({ id, roles })
 
+            await firstValueFrom(
+                this.client.send('update.user',{id,updateUserDto:{lastLogin:new Date()}}).pipe(timeout(5000))
+            )
             return { user: { id, roles }, ...tokens }
 
         } catch (error) {
