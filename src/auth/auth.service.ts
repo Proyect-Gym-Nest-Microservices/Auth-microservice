@@ -15,7 +15,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 @Injectable()
 export class AuthService extends PrismaClient implements OnModuleInit {
 
-    private readonly logger = new Logger('Auth-Service');
+    private readonly logger = new Logger(AuthService.name);
 
     constructor(
         @Inject(NATS_SERVICE) private readonly client: ClientProxy,
