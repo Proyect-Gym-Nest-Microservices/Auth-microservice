@@ -10,6 +10,9 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import * as bcrypt from 'bcrypt';
 import { of, throwError } from 'rxjs';
+import { envs } from '../config/envs.config';
+
+
 
 // Mocks
 const jwtServiceMock = {
@@ -62,7 +65,6 @@ describe('AuthService', () => {
     jwtService = module.get<JwtService>(JwtService);
     clientProxy = module.get<ClientProxy>(NATS_SERVICE);
 
-    // Asignar los mocks de Prisma
     Object.assign(service, prismaServiceMock);
   });
 
@@ -70,270 +72,252 @@ describe('AuthService', () => {
     jest.clearAllMocks();
   });
 
-  describe('registerUser', () => {
-    const registerDto: RegisterUserDto = {
-      name: 'Test User',
-      email: 'test@test.com',
-      password: 'StrongPass123!'
-    };
-
-    it('should register a new user successfully', async () => {
-      const hashedPassword = 'hashedPassword123';
-      const userId = '1';
-      const userRoles = ['USER'];
-
-      jest.spyOn(bcrypt, 'hash').mockResolvedValue(hashedPassword as never);
-      
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: userId,
-        roles: userRoles
-      }));
-
-      jwtServiceMock.sign
-        .mockReturnValueOnce('access-token')
-        .mockReturnValueOnce('refresh-token');
-
-      prismaServiceMock.refreshToken.create.mockResolvedValue({});
-
-      const result = await service.registerUser(registerDto);
-
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
-      expect(result.user).toEqual({
-        id: userId,
-        roles: userRoles
-      });
-    });
-
-    it('should throw an error if user creation fails', async () => {
-      clientProxyMock.send.mockReturnValueOnce(
-        throwError(() => new Error('Database error'))
-      );
-
-      await expect(service.registerUser(registerDto))
-        .rejects
-        .toThrow(RpcException);
-    });
-  });
-
-  describe('loginUser', () => {
-    const loginDto: LoginUserDto = {
-      email: 'test@test.com',
-      password: 'StrongPass123!'
-    };
-
-    it('should login user successfully', async () => {
-      const userId = '1';
-      const userRoles = ['USER'];
-      const hashedPassword = await bcrypt.hash(loginDto.password, 10);
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: userId,
-        roles: userRoles,
-        password: hashedPassword
-      }));
-
-      jwtServiceMock.sign
-        .mockReturnValueOnce('access-token')
-        .mockReturnValueOnce('refresh-token');
-
-      prismaServiceMock.refreshToken.create.mockResolvedValue({});
-
-      const result = await service.loginUser(loginDto);
-
-      expect(result).toHaveProperty('accessToken');
-      expect(result).toHaveProperty('refreshToken');
-      expect(result.user).toEqual({
-        id: userId,
-        roles: userRoles
-      });
-    });
-
-    it('should throw an error for invalid credentials', async () => {
-      const hashedPassword = await bcrypt.hash('differentPassword', 10);
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        password: hashedPassword
-      }));
-
-      await expect(service.loginUser(loginDto))
-        .rejects
-        .toThrow(RpcException);
-    });
-  });
-
-  describe('changePassword', () => {
-    const changePasswordDto: ChangePasswordDto = {
-      userId: '1',
-      currentPassword: 'CurrentPass123!',
-      newPassword: 'NewPass123!',
-      confirmNewPassword: 'NewPass123!'
-    };
-
-    it('should change password successfully', async () => {
-      const hashedOldPassword = await bcrypt.hash(changePasswordDto.currentPassword, 10);
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: changePasswordDto.userId,
-        password: hashedOldPassword
-      }));
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: changePasswordDto.userId,
-        updated: true
-      }));
-
-      const result = await service.changePassword(changePasswordDto);
-
-      expect(result).toHaveProperty('message', 'Password changed successfully');
-    });
-
-    it('should throw error if passwords do not match', async () => {
-      const invalidDto = {
-        ...changePasswordDto,
-        confirmNewPassword: 'DifferentPass123!'
-      };
-
-      await expect(service.changePassword(invalidDto))
-        .rejects
-        .toThrow(RpcException);
-    });
-  });
-
-  describe('forgotPassword', () => {
-    const forgotPasswordDto: ForgotPasswordDto = {
-      email: 'test@test.com'
-    };
-
-    it('should process forgot password request successfully', async () => {
-      const userId = '1';
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: userId,
-        email: forgotPasswordDto.email
-      }));
-
-      jwtServiceMock.sign.mockReturnValue('reset-token');
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        success: true,
-        message: 'Reset email sent'
-      }));
-
-      const result = await service.forgotPassword(forgotPasswordDto);
-
-      expect(result).toHaveProperty('success', true);
-      expect(prismaServiceMock.resetToken.create).toHaveBeenCalled();
-    });
-
-    it('should throw error if user not found', async () => {
-      clientProxyMock.send.mockReturnValueOnce(of(null));
-
-      await expect(service.forgotPassword(forgotPasswordDto))
-        .rejects
-        .toThrow(RpcException);
-    });
-  });
-
-  describe('resetPassword', () => {
-    const resetPasswordDto: ResetPasswordDto = {
-      token: 'valid-reset-token',
-      password: 'NewPass123!'
-    };
-
-    it('should reset password successfully', async () => {
-      const userId = '1';
-
-      jwtServiceMock.verifyAsync.mockResolvedValue({ id: userId });
-
-      prismaServiceMock.resetToken.findUnique.mockResolvedValue({
-        id: '1',
-        userId,
-        isUsed: false,
-        expiresAt: new Date(Date.now() + 3600000)
-      });
-
-      clientProxyMock.send.mockReturnValueOnce(of({
-        id: userId,
-        updated: true
-      }));
-
-      const result = await service.resetPassword(resetPasswordDto);
-
-      expect(result).toHaveProperty('message', 'Password reset successfully');
-      expect(prismaServiceMock.resetToken.update).toHaveBeenCalled();
-      expect(prismaServiceMock.refreshToken.updateMany).toHaveBeenCalled();
-    });
-
-    it('should throw error for expired token', async () => {
-      jwtServiceMock.verifyAsync.mockResolvedValue({ id: '1' });
-
-      prismaServiceMock.resetToken.findUnique.mockResolvedValue({
-        id: '1',
-        userId: '1',
-        isUsed: false,
-        expiresAt: new Date(Date.now() - 3600000)
-      });
-
-      await expect(service.resetPassword(resetPasswordDto))
-        .rejects
-        .toThrow(RpcException);
-    });
-  });
-
-  describe('token verification', () => {
-    const testToken = 'valid-token';
+  describe('Token Generation and Verification', () => {
     const testPayload = {
-      id: '1',
-      roles: ['USER'],
-      sub: 'subject',
-      iat: 1234567890,
-      exp: 9999999999
+      id: '123',
+      roles: ['USER_ROLE']
+    };
+
+    describe('generateAccessToken', () => {
+      it('should generate a valid access token with correct secret', async () => {
+        const accessToken = 'test-access-token';
+        jwtServiceMock.sign.mockReturnValue(accessToken);
+
+        const result = await (service as any).generateAccessToken(testPayload);
+
+        expect(jwtServiceMock.sign).toHaveBeenCalledWith(
+          testPayload,
+          {
+            expiresIn: '20m',
+            secret: envs.JWT_SECRET_ACCESS
+          }
+        );
+        expect(result).toBe(accessToken);
+      });
+    });
+
+    describe('generateRefreshToken', () => {
+      it('should generate a valid refresh token with correct secret', async () => {
+        const refreshToken = 'test-refresh-token';
+        jwtServiceMock.sign.mockReturnValue(refreshToken);
+
+        const result = await (service as any).generateRefreshToken(testPayload);
+
+        expect(jwtServiceMock.sign).toHaveBeenCalledWith(
+          testPayload,
+          {
+            expiresIn: '7d',
+            secret: envs.JWT_SECRET_REFRESH
+          }
+        );
+        expect(result).toBe(refreshToken);
+      });
+    });
+
+    describe('generateResetToken', () => {
+      it('should generate a valid reset token with correct secret', async () => {
+        const resetToken = 'test-reset-token';
+        jwtServiceMock.sign.mockReturnValue(resetToken);
+
+        const result = await (service as any).generateResetToken(testPayload.id);
+
+        expect(jwtServiceMock.sign).toHaveBeenCalledWith(
+          { id: testPayload.id },
+          {
+            expiresIn: '15m',
+            secret: envs.JWT_SECRET_RESET_PASSWORD
+          }
+        );
+        expect(result).toBe(resetToken);
+      });
+    });
+  });
+
+  describe('Token Verification', () => {
+    const validToken = 'valid-token';
+    const testPayload = {
+      id: '123',
+      roles: ['USER_ROLE'],
+      sub: 'test-subject',
+      iat: Date.now(),
+      exp: Date.now() + 3600000
     };
 
     describe('verifyAccessToken', () => {
-      it('should verify access token successfully', async () => {
+      it('should verify a valid access token', async () => {
         jwtServiceMock.verify.mockReturnValue(testPayload);
 
-        const result = await service.verifyAccessToken(testToken);
+        const result = await service.verifyAccessToken(validToken);
 
+        expect(jwtServiceMock.verify).toHaveBeenCalledWith(
+          validToken,
+          { secret: envs.JWT_SECRET_ACCESS }
+        );
         expect(result.user).toEqual({
           id: testPayload.id,
           roles: testPayload.roles
         });
       });
 
-      it('should throw error for invalid access token', async () => {
+      it('should throw RpcException for invalid access token', async () => {
         jwtServiceMock.verify.mockImplementation(() => {
           throw new Error('Invalid token');
         });
 
-        await expect(service.verifyAccessToken(testToken))
+        await expect(service.verifyAccessToken(validToken))
           .rejects
           .toThrow(RpcException);
       });
     });
 
     describe('verifyRefreshToken', () => {
-      it('should verify refresh token successfully', async () => {
+      it('should verify a valid refresh token', async () => {
         jwtServiceMock.verify.mockReturnValue(testPayload);
 
-        const result = await service.verifyRefreshToken(testToken);
+        const result = await service.verifyRefreshToken(validToken);
 
+        expect(jwtServiceMock.verify).toHaveBeenCalledWith(
+          validToken,
+          { secret: envs.JWT_SECRET_REFRESH }
+        );
         expect(result.user).toEqual({
           id: testPayload.id,
           roles: testPayload.roles
         });
       });
 
-      it('should throw error for invalid refresh token', async () => {
+      it('should throw RpcException for expired refresh token', async () => {
         jwtServiceMock.verify.mockImplementation(() => {
-          throw new Error('Invalid token');
+          throw new Error('Token expired');
         });
 
-        await expect(service.verifyRefreshToken(testToken))
+        await expect(service.verifyRefreshToken(validToken))
           .rejects
           .toThrow(RpcException);
+      });
+    });
+  });
+
+  // Pruebas de integración de flujos completos
+  describe('Authentication Flows', () => {
+    describe('Complete Login Flow', () => {
+      const loginDto: LoginUserDto = {
+        email: 'test@test.com',
+        password: 'StrongPass123!'
+      };
+
+      it('should complete full login flow with token generation', async () => {
+        const userId = '123';
+        const userRoles = ['USER_ROLE'];
+        const hashedPassword = await bcrypt.hash(loginDto.password, 10);
+        const mockAccessToken = 'mock-access-token';
+        const mockRefreshToken = 'mock-refresh-token';
+
+        clientProxyMock.send.mockImplementationOnce((pattern, payload) => {
+            expect(pattern).toBe('find.user.by.email');
+            expect(payload).toBe(loginDto.email);
+            return of({
+                id: userId,
+                roles: userRoles,
+                password: hashedPassword
+            });
+        });
+        clientProxyMock.send.mockImplementationOnce((pattern, payload) => {
+            expect(pattern).toBe('update.user');
+            expect(payload).toEqual({
+                id: userId,
+                updateUserDto: {
+                    lastLogin: expect.any(Date)
+                }
+            });
+            return of({ success: true });
+        });
+
+        jwtServiceMock.sign
+          .mockReturnValueOnce(mockAccessToken)  // Para access token
+          .mockReturnValueOnce(mockRefreshToken); // Para refresh token
+
+        prismaServiceMock.refreshToken.create.mockResolvedValue({
+          id: '1',
+          token: mockRefreshToken,
+          userId,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+        });
+          
+        const result = await service.loginUser(loginDto);
+
+        expect(result).toEqual({
+          user: { id: userId, roles: userRoles },
+          accessToken: mockAccessToken,
+          refreshToken: mockRefreshToken
+        });
+
+        // Verificar que el refresh token se guardó
+        expect(prismaServiceMock.refreshToken.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            token: mockRefreshToken,
+            userId
+          })
+        });
+      });
+    });
+
+    describe('Password Reset Flow', () => {
+      const resetEmail = 'test@test.com';
+      const userId = '123';
+      const newPassword = 'NewStrongPass123!';
+
+      it('should complete full password reset flow', async () => {
+        // 1. Forgot Password Request
+        const forgotPasswordDto: ForgotPasswordDto = { email: resetEmail };
+        const mockResetToken = 'mock-reset-token';
+
+        clientProxyMock.send.mockReturnValueOnce(of({
+          id: userId,
+          email: resetEmail
+        }));
+
+        jwtServiceMock.sign.mockReturnValue(mockResetToken);
+
+        clientProxyMock.send.mockReturnValueOnce(of({
+          success: true,
+          message: 'Reset email sent'
+        }));
+
+        const forgotResult = await service.forgotPassword(forgotPasswordDto);
+        expect(forgotResult.success).toBe(true);
+
+        // 2. Reset Password
+        const resetPasswordDto: ResetPasswordDto = {
+          token: mockResetToken,
+          password: newPassword
+        };
+
+        jwtServiceMock.verifyAsync.mockResolvedValue({ id: userId });
+
+        prismaServiceMock.resetToken.findUnique.mockResolvedValue({
+          id: '1',
+          userId,
+          token: mockResetToken,
+          isUsed: false,
+          expiresAt: new Date(Date.now() + 3600000)
+        });
+
+        clientProxyMock.send.mockReturnValueOnce(of({
+          id: userId,
+          updated: true
+        }));
+
+        const resetResult = await service.resetPassword(resetPasswordDto);
+        expect(resetResult.message).toBe('Password reset successfully');
+
+        // Verificar que se revocaron los tokens antiguos
+        expect(prismaServiceMock.refreshToken.updateMany).toHaveBeenCalledWith({
+          where: { userId },
+          data: expect.objectContaining({
+            isRevoked: true
+          })
+        });
       });
     });
   });

@@ -264,6 +264,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             return { user: { id, roles }, ...tokens }
 
         } catch (error) {
+            this.logger.error(error)
             this.handleError(error, 'Invalid Credentials',HttpStatus.INTERNAL_SERVER_ERROR)
         }
 
@@ -313,6 +314,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
             const user = await firstValueFrom(
                 this.client.send('find.user.by.email', email).pipe(timeout(5000))
             );
+            console.log(user )
             if (!user) {
                 throw new RpcException({
                     status: HttpStatus.NOT_FOUND,
@@ -345,8 +347,6 @@ export class AuthService extends PrismaClient implements OnModuleInit {
 
     async resetPassword(resetPasswordDto: ResetPasswordDto) {
         const { token, password: newPassword } = resetPasswordDto;
-        this.logger.error(resetPasswordDto)
-
         try {
             await this.jwtService.verifyAsync(token, {
                 secret: envs.JWT_SECRET_RESET_PASSWORD
