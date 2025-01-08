@@ -5,6 +5,7 @@ import * as joi from 'joi';
 interface EnvVars{
     PORT: number;
     DATABASE_URL: string,
+    DATABASE_URL_TEST: string,
     //JWT_SECRET: string,
     JWT_SECRET_ACCESS: string,
     JWT_SECRET_REFRESH: string,
@@ -15,6 +16,7 @@ interface EnvVars{
 const envsSchema = joi.object({
     PORT: joi.number().required(),
     DATABASE_URL: joi.string().required(),
+    DATABASE_URL_TEST: joi.string().required(),
     JWT_SECRET_ACCESS: joi.string().required(),
     JWT_SECRET_REFRESH: joi.string().required(),
     JWT_SECRET_RESET_PASSWORD: joi.string().required(),
@@ -37,6 +39,7 @@ const envsVars: EnvVars = value;
 export const envs = {
     PORT: envsVars.PORT,
     DATABASE_URL: envsVars.DATABASE_URL,
+    DATABASE_URL_TEST: envsVars.DATABASE_URL_TEST,
     NATS_SERVERS: envsVars.NATS_SERVERS,
     //JWT_SECRET:envsVars.JWT_SECRET
     JWT_SECRET_RESET_PASSWORD: envsVars.JWT_SECRET_RESET_PASSWORD,

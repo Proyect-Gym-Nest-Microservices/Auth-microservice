@@ -3,8 +3,9 @@ import { JwtService } from "@nestjs/jwt";
 import { ClientProxy, RpcException } from "@nestjs/microservices";
 import { PrismaClient } from "@prisma/client";
 import { JwtPayload } from "./interfaces/jwt-payload.interface";
-import { envs, NATS_SERVICE } from "src/config";
 import { RegisterUserDto } from "./dto/register-user.dto";
+import { NATS_SERVICE } from "../config/services.config";
+import { envs } from "../config/envs.config";
 import * as bcrypt from 'bcrypt'
 import { LoginUserDto } from "./dto/login-user.dto";
 import { firstValueFrom, timeout, TimeoutError } from "rxjs";

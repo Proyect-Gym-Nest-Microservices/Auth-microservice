@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { Logger, ValidationPipe } from '@nestjs/common';
-import { envs } from './config';
+import { envs } from './config/envs.config';
 
 async function bootstrap() {
   const logger = new Logger('AuthMs-Main');
