@@ -21,7 +21,6 @@ model ResetToken {
   isUsed    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
   @@index([userId])
 }
 
@@ -33,6 +32,6 @@ model RefreshToken {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   isRevoked Boolean  @default(false)
-
   @@index([userId])
 }
+

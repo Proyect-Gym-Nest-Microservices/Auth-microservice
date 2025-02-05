@@ -29,3 +29,4 @@ import { envs } from '../config/envs.config';
     ]
 })
 export class NatsModule { }
+
